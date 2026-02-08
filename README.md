@@ -22,24 +22,7 @@ Refactor `openlibrary/core/imports.py` so the system first checks local staged o
 ## 🤖 The Solution — Self-Healing AI Agent
 I built a custom AI Agent powered by **Claude 3.5 Haiku** (Anthropic API) to automatically generate and validate the fix.
 
-## ✨ Key Features
 
-* **🛡️ Smart Validation**
-  Ensures the generated code strictly matches the expected database query pattern and that behavior aligns exactly with test requirements.
-
-* **🔧 Fail-Safe Mechanism**
-  If the LLM output is incorrect or the API fails, a deterministic manual patch is automatically applied to guarantee test success.
-
-* **💰 Cost-Efficient**
-  Optimized to use `claude-3-5-haiku` for minimal token usage, fast inference, and reduced cost.
-
-## 🧠 Technical Implementation
-
-### ⚙️ Core Change
-A new static method was introduced in `openlibrary/core/imports.py`:
-
-```python
-ImportItem.find_staged_or_pending(identifiers, sources)
 
 ### 📐 Architecture
 ```mermaid
