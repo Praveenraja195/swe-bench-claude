@@ -30,11 +30,14 @@ def save_prompt(prompt_text):
 
 def attempt_ai_fix(prompt):
     # 2. Check for Claude Key
-    api_key = os.environ.get('CLAUDE_API_KEY')
+    raw_api_key = os.environ.get('CLAUDE_API_KEY')
     
-    if not api_key:
+    if not raw_api_key:
         print("❌ Error: CLAUDE_API_KEY is missing or empty.")
         raise Exception("CLAUDE_API_KEY missing")
+    
+    # CRITICAL FIX: .strip() removes the invisible '\n' that caused the error
+    api_key = raw_api_key.strip()
     
     # Mask key for safety log
     print(f"🔑 Found API Key: {api_key[:8]}...{api_key[-4:]}")
@@ -47,7 +50,7 @@ def attempt_ai_fix(prompt):
     # 3. Client with Retries
     client = anthropic.Anthropic(
         api_key=api_key,
-        max_retries=3  # Retry 3 times if connection fails
+        max_retries=3
     )
     
     filepath = 'openlibrary/core/imports.py'
@@ -133,9 +136,8 @@ def main():
     try:
         attempt_ai_fix(prompt)
     except Exception as e:
-        # Print FULL Error Traceback to see exactly why it failed
         print(f"❌ AI Critical Error: {e}")
-        traceback.print_exc()
+        # traceback.print_exc() # Clean logs
         apply_fix_manually()
 
     # Verify syntax
