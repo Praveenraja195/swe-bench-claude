@@ -36,10 +36,9 @@ def attempt_ai_fix(prompt):
         print("❌ Error: CLAUDE_API_KEY is missing or empty.")
         raise Exception("CLAUDE_API_KEY missing")
     
-    # CRITICAL FIX: .strip() removes the invisible '\n' that caused the error
+    # Strip invisible characters
     api_key = raw_api_key.strip()
     
-    # Mask key for safety log
     print(f"🔑 Found API Key: {api_key[:8]}...{api_key[-4:]}")
 
     if not anthropic:
@@ -47,7 +46,6 @@ def attempt_ai_fix(prompt):
 
     print(f"🤖 Connecting to Claude 3.5 Sonnet (Attempting connection)...")
     
-    # 3. Client with Retries
     client = anthropic.Anthropic(
         api_key=api_key,
         max_retries=3
@@ -75,9 +73,9 @@ def attempt_ai_fix(prompt):
     - Do not include explanations.
     """
 
-    # 4. Call Claude API
+    # 4. Call Claude API (Using LATEST alias to avoid 404s)
     message = client.messages.create(
-        model="claude-3-5-sonnet-20240620",
+        model="claude-3-5-sonnet-latest",
         max_tokens=4096,
         messages=[
             {"role": "user", "content": full_prompt}
@@ -137,7 +135,6 @@ def main():
         attempt_ai_fix(prompt)
     except Exception as e:
         print(f"❌ AI Critical Error: {e}")
-        # traceback.print_exc() # Clean logs
         apply_fix_manually()
 
     # Verify syntax
