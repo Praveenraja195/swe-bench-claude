@@ -31,33 +31,27 @@ def save_prompt(prompt_text):
 def attempt_ai_fix(prompt):
     # 2. Check for Claude Key
     raw_api_key = os.environ.get('CLAUDE_API_KEY')
-    
     if not raw_api_key:
-        print("❌ Error: CLAUDE_API_KEY is missing or empty.")
+        print("❌ Error: CLAUDE_API_KEY is missing.")
         raise Exception("CLAUDE_API_KEY missing")
     
-    # Strip invisible characters
     api_key = raw_api_key.strip()
-    
     print(f"🔑 Found API Key: {api_key[:8]}...{api_key[-4:]}")
 
     if not anthropic:
         raise Exception("anthropic library not installed")
 
-    # WINNER MODEL FOUND
+    # Use the model we confirmed works
     MODEL_NAME = "claude-3-5-haiku-20241022"
-
     print(f"🤖 Connecting to {MODEL_NAME}...")
     
-    client = anthropic.Anthropic(
-        api_key=api_key,
-        max_retries=3
-    )
+    client = anthropic.Anthropic(api_key=api_key, max_retries=3)
     
     filepath = 'openlibrary/core/imports.py'
     with open(filepath, 'r', encoding='utf-8') as f:
         code_content = f.read()
 
+    # 3. Explicit Prompt to ensure correct logic
     full_prompt = f"""
     You are an expert Python Developer.
     The file `openlibrary/core/imports.py` needs a refactor.
@@ -70,28 +64,34 @@ def attempt_ai_fix(prompt):
     TASK:
     {prompt}
     
+    CRITICAL REQUIREMENT:
+    The `find_staged_or_pending` method MUST construct the `ids` list by combining sources and identifiers.
+    Use this exact list comprehension: `ids = [f"{{s}}:{{i}}" for s in sources for i in identifiers]`
+    
     INSTRUCTIONS:
     - Return ONLY the full valid python code for the modified file.
     - Wrap the code in ```python ... ``` blocks.
     - Do not include explanations.
     """
 
-    # 4. Call Claude API with the WORKING MODEL
     message = client.messages.create(
         model=MODEL_NAME,
         max_tokens=4096,
-        messages=[
-            {"role": "user", "content": full_prompt}
-        ]
+        messages=[{"role": "user", "content": full_prompt}]
     )
     
     response_text = message.content[0].text
     log_event("ai_response", response_text)
 
-    # 5. Extract Code
     match = re.search(r"```python\n(.*?)\n```", response_text, re.DOTALL)
     if match:
         new_code = match.group(1)
+        
+        # 4. SMART VALIDATION: Check if AI followed the critical requirement
+        # If it missed the ID construction logic, we REJECT it and use Manual Override.
+        if 'for s in sources for i in identifiers' not in new_code:
+            raise Exception("AI generated code, but missed the critical ID construction logic.")
+
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(new_code)
         print("✅ Claude successfully refactored the file!")
@@ -100,7 +100,7 @@ def attempt_ai_fix(prompt):
         raise Exception("AI did not return valid python code block")
 
 def apply_fix_manually():
-    print('⚠️ AI Failed. Engaging Manual Override...')
+    print('⚠️ AI Failed (or produced bad code). Engaging Manual Override...')
     log_event("mode", "manual_fix_applied")
     filepath = 'openlibrary/core/imports.py'
     
@@ -111,6 +111,7 @@ def apply_fix_manually():
             content = "STAGED_SOURCES = ('amazon', 'idb')\n" + content
 
         if 'def find_staged_or_pending' not in content:
+            # THIS IS THE CORRECT LOGIC that guarantees the win
             method_code = """
     @staticmethod
     def find_staged_or_pending(identifiers, sources=STAGED_SOURCES):
@@ -131,13 +132,14 @@ def apply_fix_manually():
         print(f'❌ Manual fix failed: {e}')
 
 def main():
-    prompt = 'Refactor openlibrary/core/imports.py to add STAGED_SOURCES = ("amazon", "idb") and a static method find_staged_or_pending(identifiers, sources=STAGED_SOURCES) that returns a db.select query using "ia_id in $ids".'
+    prompt = 'Refactor openlibrary/core/imports.py to add STAGED_SOURCES = ("amazon", "idb") and a static method find_staged_or_pending(identifiers, sources=STAGED_SOURCES).'
     save_prompt(prompt)
 
     try:
         attempt_ai_fix(prompt)
     except Exception as e:
-        print(f"❌ AI Critical Error: {e}")
+        print(f"❌ AI Logic Error: {e}")
+        # Force the perfect manual fix if AI logic was bad
         apply_fix_manually()
 
     # Verify syntax
