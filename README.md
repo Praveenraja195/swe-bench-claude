@@ -84,18 +84,15 @@ All failures were eliminated, and the fix is fully verified.
 
 ```mermaid
 graph TD
-    A[Start Workflow] --> B[Setup Environment]
-    B --> C{Attempt AI Fix}
-    C -->|Claude 3.5 Haiku| D[Generate Code]
-    D --> E{Smart Validation}
-    E -->|Passes Logic Check| F[Apply AI Fix]
-    E -->|Fails Logic Check| G[Trigger Fail-Safe]
-    C -->|API Error| G
-    G -->|Apply Manual Patch| H[Apply Deterministic Fix]
-    F --> I[Run Tests]
-    H --> I
-    I --> J{Result}
-    J -->|Green| K[Success ✅]
-
-    
-
+A[Start Workflow] --> B[Setup Environment]
+B --> C{Attempt AI Fix}
+C -->|Claude 3.5 Haiku| D[Generate Code]
+D --> E{Smart Validation}
+E -->|Passes Logic Check| F[Apply AI Fix]
+E -->|Fails Logic Check| G[Trigger Fail-Safe]
+C -->|API Error| G
+G -->|Apply Manual Patch| H[Apply Deterministic Fix]
+F --> I[Run Tests]
+H --> I
+I --> J{Result}
+J -->|Green| K[Success ✅]
