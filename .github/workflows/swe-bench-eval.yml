@@ -1,0 +1,75 @@
+name: SWE-bench Pro Evaluation
+
+permissions:
+  contents: read
+  packages: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'Task ID'
+        required: true
+        default: 'internetarchive__openlibrary-c4eebe6677acc4629cb541a98d5e91311444f5d4'
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    container:
+      image: manojva/openlibrary-python312:latest
+      options: --user root
+
+    steps:
+      - name: Checkout Controller
+        uses: actions/checkout@v4
+        with:
+          path: controller
+
+      - name: Install Base Dependencies
+        run: |
+          pip install anthropic pytest pyyaml babel
+          pip install web.py==0.62 internetarchive
+
+      - name: Setup Target Repo & Missing Libraries
+        run: |
+          chmod +x $GITHUB_WORKSPACE/controller/scripts/setup_repository.sh
+          $GITHUB_WORKSPACE/controller/scripts/setup_repository.sh
+
+      - name: Run Pre-Verification
+        continue-on-error: true
+        run: |
+          cd /testbed
+          export PYTHONPATH=$PYTHONPATH:/testbed:/testbed/infogami:/testbed/infobase
+          python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/pre_verification.log 2>&1 || true
+
+      - name: Run Claude Agent
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        run: |
+          cd /testbed
+          export PYTHONPATH=$PYTHONPATH:/testbed:/testbed/infogami:/testbed/infobase
+          python $GITHUB_WORKSPACE/controller/scripts/run_agent.py
+
+      - name: Post-Verification & Metrics
+        if: always()
+        run: |
+          if [ -d "/testbed/.git" ]; then
+            cd /testbed
+            export PYTHONPATH=$PYTHONPATH:/testbed:/testbed/infogami:/testbed/infobase
+            git diff > /tmp/changes.patch || true
+            python -m pytest openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending -xvs > /tmp/post_verification.log 2>&1 || true
+          fi
+          python $GITHUB_WORKSPACE/controller/scripts/extract_metrics.py
+
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swe-bench-artifacts
+          path: |
+            /tmp/agent.log
+            /tmp/result.json
+            /tmp/pre_verification.log
+            /tmp/post_verification.log
+            /tmp/changes.patch
+            /tmp/prompts.md
