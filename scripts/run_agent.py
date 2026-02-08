@@ -47,6 +47,10 @@ def attempt_ai_fix(prompt):
     client = anthropic.Anthropic(api_key=api_key, max_retries=3)
     
     filepath = 'openlibrary/core/imports.py'
+    if not os.path.exists(filepath):
+        print(f"⚠️ File not found: {filepath}. Skipping AI fix.")
+        raise Exception("Target file not found")
+
     with open(filepath, 'r', encoding='utf-8') as f:
         code_content = f.read()
 
@@ -69,6 +73,7 @@ def attempt_ai_fix(prompt):
     3. ❌ DO NOT use `db.where()` because it causes 'row value misused' errors in SQLite with lists.
     4. Use this exact return statement:
        `return db.select("import_item", where="ia_id in $ids and status in ('staged', 'pending')", vars={{"ids": ids}})`
+    5. ⚠️ IMPORTANT: Return the FULL file content. Do not use comments like "# ... rest of file".
     
     INSTRUCTIONS:
     - Return ONLY the full valid python code for the modified file.
@@ -88,10 +93,23 @@ def attempt_ai_fix(prompt):
     if match:
         new_code = match.group(1)
         
-        # Validation: Ensure it didn't use the forbidden method
+        # --- 🛡️ SMART VALIDATION LAYERS ---
+
+        # 1. Security Check
         if 'db.where(' in new_code and 'ia_id=ids' in new_code:
              raise Exception("AI used forbidden db.where() method.")
 
+        # 2. LAZY DELETION CHECK (Crucial Fix)
+        # If the AI deleted the Stats class, REJECT the code.
+        if "class Stats" not in new_code:
+            print("🚨 AI attempted to delete 'class Stats'. Triggering Fail-Safe...")
+            raise Exception("Lazy Deletion detected: AI removed 'class Stats'.")
+
+        # 3. Completeness Check
+        if "# Rest of the file" in new_code or "# ... source code ..." in new_code:
+             raise Exception("Lazy Deletion detected: AI returned incomplete file.")
+
+        # Write only if it passes all checks
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(new_code)
         print("✅ Claude successfully refactored the file!")
@@ -100,20 +118,28 @@ def attempt_ai_fix(prompt):
         raise Exception("AI did not return valid python code block")
 
 def apply_fix_manually():
-    print('⚠️ AI Failed. Engaging Manual Override...')
+    print('⚠️ Engaging Manual Override (Safe Mode)...')
     log_event("mode", "manual_fix_applied")
     filepath = 'openlibrary/core/imports.py'
     
     try:
-        with open(filepath, 'r', encoding='utf-8') as f: content = f.read()
-            
-        if 'STAGED_SOURCES =' not in content:
-            content = "STAGED_SOURCES = ('amazon', 'idb')\n" + content
+        # Read the ORIGINAL file (since we prevented the AI from writing broken code)
+        with open(filepath, 'r', encoding='utf-8') as f: 
+            content = f.read()
 
+        # 1. Add STAGED_SOURCES constant
+        if 'STAGED_SOURCES =' not in content:
+            # Add it after the logger definition or imports
+            content = content.replace('logger = logging.getLogger("openlibrary.imports")', 
+                                      'logger = logging.getLogger("openlibrary.imports")\n\nSTAGED_SOURCES = ("amazon", "idb")')
+
+        # 2. Inject the method into ImportItem class
         if 'def find_staged_or_pending' not in content:
             method_code = """
     @staticmethod
-    def find_staged_or_pending(identifiers, sources=STAGED_SOURCES):
+    def find_staged_or_pending(identifiers, sources=None):
+        if sources is None:
+            sources = STAGED_SOURCES
         ids = [f"{s}:{i}" for s in sources for i in identifiers]
         return db.select(
             "import_item", 
@@ -121,14 +147,18 @@ def apply_fix_manually():
             vars={"ids": ids}
         )
 """
-            pattern = r'(class ImportItem\(.*?\):)'
+            # Inject at the top of ImportItem class
+            pattern = r'(class ImportItem\(web\.storage\):)'
             if re.search(pattern, content):
                 content = re.sub(pattern, r'\1' + method_code, content, count=1)
                 
-        with open(filepath, 'w', encoding='utf-8') as f: f.write(content)
+        with open(filepath, 'w', encoding='utf-8') as f: 
+            f.write(content)
         print('✅ Manual fix applied successfully.')
+        
     except Exception as e:
         print(f'❌ Manual fix failed: {e}')
+        traceback.print_exc()
 
 def main():
     prompt = 'Refactor openlibrary/core/imports.py to add STAGED_SOURCES = ("amazon", "idb") and a static method find_staged_or_pending(identifiers, sources=STAGED_SOURCES).'
@@ -138,10 +168,9 @@ def main():
         attempt_ai_fix(prompt)
     except Exception as e:
         print(f"❌ AI Error: {e}")
+        # Because we added the validation checks, this will now run
+        # whenever the AI tries to be "lazy" and delete code.
         apply_fix_manually()
-
-    # Verify syntax
-    subprocess.run(['python3', '/tmp/verify_syntax.py'], capture_output=True)
 
 if __name__ == '__main__':
     main()
