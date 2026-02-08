@@ -2,21 +2,23 @@
 set -e
 echo "🚀 Setting up Controller Environment..."
 
-# 1. Clean Slate
+# 1. Clean Slate (Safety for Re-runs)
 rm -rf /testbed
 mkdir -p /testbed
 
-# 2. Clone OpenLibrary
+# 2. Clone OpenLibrary (Hackathon Requirement)
 echo "Cloning OpenLibrary..."
 git clone https://github.com/internetarchive/openlibrary.git /testbed
 cd /testbed
+
+# --- ⚠️ CRITICAL: Set the BASE Commit ---
 git reset --hard 84cc4ed5697b83a849e9106a09bfed501169cc20
 
-# 3. FORCE REMOVE SYMLINKS
+# 3. FORCE REMOVE SYMLINKS (Fixes "File Exists" errors)
 rm -rf infogami
 rm -rf infobase
 
-# 4. BUILD THE DEEP MOCK STRUCTURE
+# 4. BUILD THE DEEP MOCK STRUCTURE (Fixes "ImportError")
 mkdir -p infogami/infobase/tests
 mkdir -p infogami/utils/view
 mkdir -p infogami/infobase/client
@@ -50,7 +52,7 @@ def render_template(*args, **kwargs): return ""
 def template(*args, **kwargs): return ""
 EOF
 
-# Copy mocks
+# Copy mocks to satisfy all imports
 cp mock_greedy.py infogami/__init__.py
 cp mock_greedy.py infogami/infobase/__init__.py
 cp mock_greedy.py infogami/infobase/utils/__init__.py
@@ -62,7 +64,7 @@ cp mock_greedy.py memcache.py
 cp mock_greedy.py psycopg2/__init__.py
 cp mock_greedy.py psycopg2/errors.py
 
-# 6. CREATE SYNTAX VALIDATOR
+# 6. CREATE SYNTAX VALIDATOR (Helper tool)
 cat <<EOF > /tmp/verify_syntax.py
 import py_compile
 import sys
@@ -74,6 +76,12 @@ except Exception as e:
     sys.exit(1)
 EOF
 
-# 7. Restore Test File
+# 7. Restore Test File (Hackathon Requirement)
 git checkout c4eebe6677acc4629cb541a98d5e91311444f5d4 -- openlibrary/tests/core/test_imports.py
-echo "✅ Setup complete. Database mocked."
+
+# --- 🆕 ADDED: Generate the Diff Artifact ---
+# The judges want to see a 'changes.patch' file. 
+# We create an empty one now, and the workflow will update it after the agent runs.
+touch changes.patch
+
+echo "✅ Setup complete. Database mocked. Ready for Agent."
