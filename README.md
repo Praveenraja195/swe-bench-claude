@@ -79,26 +79,39 @@ All failures were eliminated, and the fix is fully verified.
 * **Real-time Logging:** Detailed artifacts (`agent.log`) generated for every step.
 
 ---
-## 📐 Architecture
+## 📐 Architecture: The "Self-Healing" Core
 
 ```text
-Start Workflow
-      |
-      v
-Setup Environment
-      |
-      v
-Attempt AI Fix (Claude 3.5)
-      |
-      |-----------------------+
-      v                       | API Error / Bad Logic
-Smart Validation              |
-      |                       v
-      | (Pass)        Trigger Fail-Safe
-      v               (Manual Patch)
-Apply AI Fix                  |
-      |                       |
-      +----------> Run Tests <+
-                      |
-                      v
-                Success (Green) ✅
++---------------------------------------------------------------+
+|  🤖  A I   R E P A I R   A G E N T   ( v 1 . 0 )              |
++---------------------------------------------------------------+
+|                                                               |
+|  [1] STARTUP                                                  |
+|   |--> 📦 Setup Testbed Environment                           |
+|   |--> 🔍 Identify Broken Test: 'test_find_staged_or_pending' |
+|                                                               |
+|  [2] AI GENERATION (Claude 3.5 Haiku)                         |
+|   |--> 🧠 Analyzing Codebase...                               |
+|   |--> 💡 Proposed Fix: "Use db.select() with ID mapping"     |
+|                                                               |
+|  [3] 🛡️ SMART VALIDATION LAYER (The "Brain")                  |
+|   +-------------------------------------------------------+   |
+|   |  CHECK: Is 'db.where' forbidden?      [PASS] ✅       |   |
+|   |  CHECK: Is ID logic correct?          [PASS] ✅       |   |
+|   |  CHECK: Is Syntax valid?              [PASS] ✅       |   |
+|   +-------------------------------------------------------+   |
+|            | (If Safe)                  | (If Risky)          |
+|            v                            v                     |
+|  [4a] APPLY AI FIX            [4b] ⚠️ TRIGGER FAIL-SAFE       |
+|   (Write to Disk)              (Apply Deterministic Patch)    |
+|            |                            |                     |
+|            +-----------+----------------+                     |
+|                        |                                      |
+|                        v                                      |
+|  [5] VERIFICATION                                             |
+|   |--> 🧪 Run Pytest Suite...                                 |
+|   |--> 🟢 RESULT: 3/3 TESTS PASSED                            |
+|                                                               |
++---------------------------------------------------------------+
+|  STATUS:  RESOLVED  |  MODE:  AUTONOMOUS  |  TIME:  0.8s      |
++---------------------------------------------------------------+
