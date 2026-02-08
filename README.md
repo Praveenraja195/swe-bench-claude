@@ -81,6 +81,7 @@ Speed Optimization: Utilized sub-second inference models.
 Real-time Logging: Detailed artifacts (agent.log) generated for every step.
 
 📐 Architecture
+Code snippet
 graph TD
     A[Start Workflow] --> B[Setup Environment]
     B --> C{Attempt AI Fix}
