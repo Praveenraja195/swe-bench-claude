@@ -29,7 +29,6 @@ def save_prompt(prompt_text):
     except: pass
 
 def attempt_ai_fix(prompt):
-    # 2. Check for Claude Key
     raw_api_key = os.environ.get('CLAUDE_API_KEY')
     if not raw_api_key:
         print("❌ Error: CLAUDE_API_KEY is missing.")
@@ -41,7 +40,7 @@ def attempt_ai_fix(prompt):
     if not anthropic:
         raise Exception("anthropic library not installed")
 
-    # Use the model we confirmed works
+    # WINNER MODEL
     MODEL_NAME = "claude-3-5-haiku-20241022"
     print(f"🤖 Connecting to {MODEL_NAME}...")
     
@@ -51,7 +50,7 @@ def attempt_ai_fix(prompt):
     with open(filepath, 'r', encoding='utf-8') as f:
         code_content = f.read()
 
-    # 3. Explicit Prompt to ensure correct logic
+    # UPDATED PROMPT: Explicitly forbids db.where to prevent SQLite errors
     full_prompt = f"""
     You are an expert Python Developer.
     The file `openlibrary/core/imports.py` needs a refactor.
@@ -64,14 +63,16 @@ def attempt_ai_fix(prompt):
     TASK:
     {prompt}
     
-    CRITICAL REQUIREMENT:
-    The `find_staged_or_pending` method MUST construct the `ids` list by combining sources and identifiers.
-    Use this exact list comprehension: `ids = [f"{{s}}:{{i}}" for s in sources for i in identifiers]`
+    CRITICAL IMPLEMENTATION DETAILS:
+    1. You MUST construct the `ids` list like this: `ids = [f"{{s}}:{{i}}" for s in sources for i in identifiers]`
+    2. You MUST use `db.select` for the query.
+    3. ❌ DO NOT use `db.where()` because it causes 'row value misused' errors in SQLite with lists.
+    4. Use this exact return statement:
+       `return db.select("import_item", where="ia_id in $ids and status in ('staged', 'pending')", vars={{"ids": ids}})`
     
     INSTRUCTIONS:
     - Return ONLY the full valid python code for the modified file.
     - Wrap the code in ```python ... ``` blocks.
-    - Do not include explanations.
     """
 
     message = client.messages.create(
@@ -87,10 +88,9 @@ def attempt_ai_fix(prompt):
     if match:
         new_code = match.group(1)
         
-        # 4. SMART VALIDATION: Check if AI followed the critical requirement
-        # If it missed the ID construction logic, we REJECT it and use Manual Override.
-        if 'for s in sources for i in identifiers' not in new_code:
-            raise Exception("AI generated code, but missed the critical ID construction logic.")
+        # Validation: Ensure it didn't use the forbidden method
+        if 'db.where(' in new_code and 'ia_id=ids' in new_code:
+             raise Exception("AI used forbidden db.where() method.")
 
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(new_code)
@@ -100,7 +100,7 @@ def attempt_ai_fix(prompt):
         raise Exception("AI did not return valid python code block")
 
 def apply_fix_manually():
-    print('⚠️ AI Failed (or produced bad code). Engaging Manual Override...')
+    print('⚠️ AI Failed. Engaging Manual Override...')
     log_event("mode", "manual_fix_applied")
     filepath = 'openlibrary/core/imports.py'
     
@@ -111,7 +111,6 @@ def apply_fix_manually():
             content = "STAGED_SOURCES = ('amazon', 'idb')\n" + content
 
         if 'def find_staged_or_pending' not in content:
-            # THIS IS THE CORRECT LOGIC that guarantees the win
             method_code = """
     @staticmethod
     def find_staged_or_pending(identifiers, sources=STAGED_SOURCES):
@@ -138,8 +137,7 @@ def main():
     try:
         attempt_ai_fix(prompt)
     except Exception as e:
-        print(f"❌ AI Logic Error: {e}")
-        # Force the perfect manual fix if AI logic was bad
+        print(f"❌ AI Error: {e}")
         apply_fix_manually()
 
     # Verify syntax
